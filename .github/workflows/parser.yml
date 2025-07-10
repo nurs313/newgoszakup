@@ -1,0 +1,62 @@
+name: Goszakup Parser
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:  # Позволяет запускать вручную
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  parse:
+    runs-on: ubuntu-latest
+    environment: parser-env
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Check permissions
+        run: |
+          pwd
+          ls -la
+          touch test.txt && echo "Test" > test.txt && cat test.txt || echo "Failed to create test.txt"
+      - name: Run parser
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python ad_parser.py
+      - name: Debug seen_ads.json
+        run: |
+          pwd
+          ls -la
+          cat seen_ads.json || echo "seen_ads.json not found"
+      - name: Commit and push seen_ads.json
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          git add seen_ads.json || echo "No seen_ads.json to add"
+          git commit -m "Update seen_ads.json" || echo "No changes to commit"
+          git fetch origin
+          git pull --rebase origin main
+          git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Debug after commit
+        run: |
+          git status
+          git diff
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parser-logs
+          path: parser_log.txt
